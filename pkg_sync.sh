@@ -18,7 +18,8 @@ error_handler () {
 #trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
 pkg_version () {
-    # generate a tar package with tag/release information
+    # generate a tag/release information for current
+    # source tree
     set +e
     ptag=$( git describe --tags --exact-match 2>/dev/null )
 
@@ -96,6 +97,12 @@ declare -a pkgs=(
         master
         "GPL-3.0"
         "Graphical application for generating different color themes variations"
+
+    -grid-desktop
+        https://github.com/pelach/grid-desktop.git
+        main
+        "GPL-3.0"
+        "A high-performance desktop widget ecosystem and icon manager for GNOME Shell"
 )
 
 # clone, sync and generate the final release/tag of
@@ -103,6 +110,10 @@ declare -a pkgs=(
 for (( idx=0 ; idx < ${#pkgs[@]} ; idx+=psize )); do
 
     pkg=${pkgs[$(( idx ))]}
+
+    [[ ."${pkg:0:1}" == .- ]] \
+        && echo -e "Skipping: $pkg\n" \
+        && continue
 
     echo -e "\nSyncing: $pkg ...\n"
 
@@ -184,6 +195,7 @@ for (( idx=0 ; idx < ${#pkgs[@]} ; idx+=psize )); do
         pkg_version
         popd # pkg-git
 
+        # generate a tar package with tag/release information
         [[ ! -e "$pkg-$ptag.tar.lz4" ]] \
             && tar -I lz4 -cf $pkg-$ptag.tar.lz4 $pkg-git --transform "s/^$pkg-git/$pkg-$ptag/"
 
