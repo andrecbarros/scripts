@@ -12,34 +12,37 @@ set -T             # Inherit DEBUG trap inside functions and subshells
 set -x             # print each line as it runs
 # trap 'read -p "$LINENO: \$> $BASH_COMMAND"' DEBUG
 
+error_code=
 error_handler () {
     echo "Error [$1] $2: \$> $3"
 }
 #trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
+# .................................................
+
 pkg_version () {
     # generate a tag/release information for current
     # source tree
     set +e
-    ptag=$( git describe --tags --exact-match 2>/dev/null )
+    ds_tag=$( git describe --tags --exact-match 2>/dev/null )
 
-    if [[ -z "$ptag" ]]; then
+    if [[ -z "$ds_tag" ]]; then
         for mode in tags always; do
-            ptag=$( git describe --$mode | \
+            ds_tag=$( git describe --$mode | \
                     sed -En ' s;^v?([0-9][[:alnum:].]*)$;\1;i; t1;
                               s;^v?([0-9][[:alnum:].]*)-([0-9]+)-(g[[:xdigit:]]+)$;\1+\2-\3;i; t1;
                               s;^g?[[:xdigit:]]+$;;i;
                              :1; p' )
-            [[ -n "$ptag" ]] \
+            [[ -n "$ds_tag" ]] \
                 && break
         done
-        if [[ -z "$ptag" ]]; then
-            ptag=$( git rev-list refs/heads/${pkgs[$(( idx + pbranch ))]} --count )
+        if [[ -z "$ds_tag" ]]; then
+            ds_tag=$( git rev-list refs/heads/${pkgs[$(( idx + ds_branch ))]} --count )
             #  --no-merges
-            ptag="$( date --utc +%Y%m%d )-$ptag.g$( git describe --always )"
+            ds_tag="$( date --utc +%Y%m%d )-$ds_tag.g$( git describe --always )"
         fi
     else
-        ptag=$( echo "$ptag" | \
+        ds_tag=$( echo "$ds_tag" | \
                 sed -En ' s;^v?([0-9][[:alnum:].]*)$;\1;i; t1;
                           s;^v?([0-9][[:alnum:].]*)-([0-9]+)-(g[[:xdigit:]]+)$;\1+\2-\3;i;
                          :1; p' )
@@ -47,67 +50,19 @@ pkg_version () {
     set -e
 }
 
-error_code=
-ptag=
-declare -i psize=5
-declare -i pbranch=2
-declare -i plink=1
-declare -a pkgs=(
-    smenu
-        https://github.com/p-gen/smenu.git
-        master
-        "MPL-2.0"
-        "Powerful and versatile CLI selection tool for interactive or scripting use."
-    gum
-        https://github.com/charmbracelet/gum.git
-        main
-        "MIT"
-        "A tool for glamorous shell scripts"
-    ncurses-st-menu
-        https://github.com/vikasnkumar/ncurses-st-menu.git
-        master
-        "BSD-2-clause"
-        "ncurses (pdcurses) based library for CUA look menu"
+# .MAIN. ..........................................
+#
+. "$( dirname $0 )"/pkg_data.sh
 
-    awf-extended
-        https://github.com/luigifab/awf-extended.git
-        levelup
-        "GPL-3.0"
-        "A Widget Factory. Create and display classic themes to:
-         * GTK 2, 3, 4;
-         * Qt 5, 6;
-         * Adwaita;
-         * Handy,
-         using the same window layout throughout."
+[[ $( type -t f_pkg_data_struct_init ) == function ]] \
+    || ( echo -e "Package data structure init function not found." ;
+         exit 1 )
 
-    Xdialog
-        https://github.com/wdlkmpx/Xdialog.git
-        master
-        "GPL-2.0"
-        "simple gtk dialog app compatible with (ncurses) dialog."
-
-    gtkhash
-        https://github.com/gtkhash/gtkhash.git
-        master
-        "GPL-2.0"
-        "A desktop utility for computing file checksums"
-
-    themix-gui
-        https://github.com/themix-project/themix-gui.git
-        master
-        "GPL-3.0"
-        "Graphical application for generating different color themes variations"
-
-    -grid-desktop
-        https://github.com/pelach/grid-desktop.git
-        main
-        "GPL-3.0"
-        "A high-performance desktop widget ecosystem and icon manager for GNOME Shell"
-)
+f_pkg_data_struct_init
 
 # clone, sync and generate the final release/tag of
 # registered packages
-for (( idx=0 ; idx < ${#pkgs[@]} ; idx+=psize )); do
+for (( idx=0 ; idx < ${#pkgs[@]} ; idx+=ds_sizeof )); do
 
     pkg=${pkgs[$(( idx ))]}
 
@@ -129,8 +84,8 @@ for (( idx=0 ; idx < ${#pkgs[@]} ; idx+=psize )); do
     # of files, get the commit signature of the
     # remote package repository, what can avoid
     # unneeded operations
-    sig=$( git ls-remote ${pkgs[$(( idx + plink ))]} \
-               origin refs/heads/${pkgs[$(( idx + pbranch ))]} )
+    sig=$( git ls-remote ${pkgs[$(( idx + ds_link ))]} \
+               origin refs/heads/${pkgs[$(( idx + ds_branch ))]} )
     error_code=$?
     (( ${error_code} )) \
         && echo -e "$pkg [${error_code}]: error on remote polling commit" \
@@ -160,7 +115,7 @@ for (( idx=0 ; idx < ${#pkgs[@]} ; idx+=psize )); do
         git clean -f -d -x
         # be extra sure all things are in place
         git pull -p
-        git rev-parse refs/heads/${pkgs[$(( idx + pbranch ))]} \
+        git rev-parse refs/heads/${pkgs[$(( idx + ds_branch ))]} \
             > ../$psig
         error_code=$?
         popd # pkg-git
@@ -174,13 +129,13 @@ for (( idx=0 ; idx < ${#pkgs[@]} ; idx+=psize )); do
             && rm -rf $pkg-git
 
         git clone \
-            -b ${pkgs[$(( idx + pbranch ))]} \
+            -b ${pkgs[$(( idx + ds_branch ))]} \
             --single-branch --depth 1 \
-            ${pkgs[$(( idx + plink ))]} \
+            ${pkgs[$(( idx + ds_link ))]} \
             $pkg-git
 
         pushd $pkg-git # pkg-git
-        git rev-parse refs/heads/${pkgs[$(( idx + pbranch ))]} \
+        git rev-parse refs/heads/${pkgs[$(( idx + ds_branch ))]} \
             > ../$psig
         error_code=$?
         popd # pkg-git
@@ -196,8 +151,8 @@ for (( idx=0 ; idx < ${#pkgs[@]} ; idx+=psize )); do
         popd # pkg-git
 
         # generate a tar package with tag/release information
-        [[ ! -e "$pkg-$ptag.tar.lz4" ]] \
-            && tar -I lz4 -cf $pkg-$ptag.tar.lz4 $pkg-git --transform "s/^$pkg-git/$pkg-$ptag/"
+        [[ ! -e "$pkg-$ds_tag.tar.lz4" ]] \
+            && tar -I lz4 -cf $pkg-$ds_tag.tar.lz4 $pkg-git --transform "s/^$pkg-git/$pkg-$ds_tag/"
 
         tar --remove-files -I lz4 -cf $ptar $pkg-git
     fi
